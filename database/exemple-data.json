@@ -1,0 +1,33 @@
+{
+    "domain": "avyzhoinfbhvfoioauauyfvbuavfbuevfegrf.onion",
+    "asrobotstxt": false,
+    "page": [
+        {
+            "url": "http://avyzhoinfbhvfoioauauyfvbuavfbuevfegrf.onion/patate",
+            "id": "hbvznefzf",
+            "data": {
+                "title": "patate",
+                "meta": [],
+                "images": [],
+                "videos": [],
+                "internal_links": [],
+                "external_links": [],
+                "extracted_text": []
+            },
+            "analyse": {
+                "isloginpage": false,
+                "iserrorpage": false,
+                "containcontactform": false,
+                "containssearchform": false,
+                "containfreecontent": false,
+                "containpremiumcontent": false,
+                "containAdultcontent": false
+            }
+        },
+        {
+            "url": "http://avyzhoinfbhvfoioauauyfvbuavfbuevfegrf.onion/patate2",
+            "id": "azejnhjez"
+        }
+    ],
+    "logs": []
+}
