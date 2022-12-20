@@ -2,6 +2,11 @@ import { generateRandomString } from "./function.ts"
 
 
 export async function analyse(data:any, url:string, content:string) {
+
+    if(url.endsWith('.onion')) {
+        url = url + "/";
+    }
+
     console.log(`[ANALYSE] parsing the url ${url}`)
 
     let pagedata:any = {}
@@ -9,6 +14,12 @@ export async function analyse(data:any, url:string, content:string) {
     if(!data.url) {
         data.url = []
     }
+
+    if(!data.allurl) {
+        data.allurl = []
+    }
+
+    data.allurl.push(url);
 
     // Step 1: Check if the url is in the database
     let check = data.url.find((element:any) => element.url == url);
@@ -20,8 +31,12 @@ export async function analyse(data:any, url:string, content:string) {
         data.logs = []
     }
 
+    data.logs.push(`${Date.now()} - analyse the url ${url}`);
+
+    content = content.replace(/(\r\n|\n|\r)/gm, "");
+
     // Step 2: Add the url to the database
-    pagedata.url = url.split('.onion')[1] == "" ? url : "/";
+    pagedata.url = url;
     pagedata.id = generateRandomString(10);
     pagedata.data = {
         title: getpageTITLE(content),
@@ -42,12 +57,24 @@ export async function analyse(data:any, url:string, content:string) {
         containAdultcontent: analyseCONTAINSADULTCONTENT(pagedata.data.extracted_text),
     }
 
+    // remove internal links that are in the allurl array
+    for(let i = 0; i < pagedata.data.internal_links.length; i++) {
+        if(data.allurl.includes(pagedata.data.internal_links[i])) {
+            pagedata.data.internal_links.splice(i, 1);
+            i--;
+        }
+    }
+
     data.url.push(pagedata);
 
     let internal_links = pagedata.data.internal_links;
     let external_links = pagedata.data.external_links;
 
-    return { data, internal_links, external_links}
+    let out = { data:data, internal_links:internal_links, external_links:external_links }
+
+    //console.log(out)
+
+    return out;
 
 }
 
@@ -55,52 +82,57 @@ export async function analyse(data:any, url:string, content:string) {
 ////////// GET PAGE DATA //////////
 
 function getpageTITLE(content:string) {
-    let regex = new RegExp("title>(.*?)</title");
-    let result = regex.exec(content);
-    return result;
+    let regex = /\<title\>(.*?)\<\/title/g;
+    let result = content.match(regex);
+
+    if(result) {
+        return cleanString(result[0].split("<title>")[1].split("</title")[0]);
+    }
+
+    return "";
 }
 
 function getpageMETA(content:string) {
-    let regex = new RegExp("<meta(.*?)>");
-    let result = regex.exec(content);
+    let regex = /\<meta(.*?)>/g;
+    let result = content.match(regex);
     return result;
 }
 
 function getpageIMAGES(content:string) {
-    let regex = new RegExp("<img(.*?)>");
-    let result = regex.exec(content);
+    let regex = /\<img(.*?)\>/g;
+    let result = content.match(regex);
     // get the url of the image
     let url:any[] = []
     if(result) {
         for(let i = 0; i < result.length; i++) {
-            let regex = new RegExp("src=\"(.*?)\"");
-            let result2 = regex.exec(result[i]);
+            let regex = /src\=\"(.*?)\"/g;
+            let result2 = result[i].match(regex);
             if(result2) {
 
                 let alt = ""
-                try { alt = result[1].split('alt="')[1].split('"')[0] } catch (error) {}
+                try { alt = result[i].split('alt="')[1].split('"')[0] } catch (error) {}
                 let title = "";
-                try { title = result[1].split('title="')[1].split('"')[0] } catch (error) {}
+                try { title = result[i].split('title="')[1].split('"')[0] } catch (error) {}
 
                 url.push({
-                    url: result[1].split('"')[1],
-                    alt: alt,
-                    title: title
+                    url: result2[0].split('"')[1],
+                    alt: cleanString(alt),
+                    title: cleanString(title)
                 });
             } else {
-                let regex = new RegExp("src=\'(.*?)\'");
-                let result2 = regex.exec(result[i]);
+                let regex = /src\=\'(.*?)\'/g;
+                let result2 = result[i].match(regex);
                 if(result2) {
 
                     let alt = ""
-                    try { alt = result[1].split("alt='")[1].split("'")[0] } catch (error) {}
+                    try { alt = result[i].split("alt='")[1].split("'")[0] } catch (error) {}
                     let title = "";
-                    try { title = result[1].split("title='")[1].split("'")[0] } catch (error) {}
+                    try { title = result[i].split("title='")[1].split("'")[0] } catch (error) {}
 
                     url.push({
-                        url: result[1].split("'")[1],
-                        alt: alt,
-                        title: title
+                        url: result2[0].split("'")[1],
+                        alt: cleanString(alt),
+                        title: cleanString(title)
                     });
                 }
             }
@@ -110,14 +142,14 @@ function getpageIMAGES(content:string) {
 }
 
 function getpageVIDEOS(content:string) {
-    let regex = new RegExp("<video(.*?)</video>");
-    let result = regex.exec(content);
+    let regex = /\<video(.*?)\<\/video>/g;
+    let result = content.match(regex);
     // get the url of the video
     let url:any[] = []
     if(result) {
         for(let i = 0; i < result.length; i++) {
-            let regex = new RegExp("src=\"(.*?)\"");
-            let result2 = regex.exec(result[i]);
+            let regex = /src\=\"(.*?)\"/g;
+            let result2 = result[i].match(regex);
             if(result2) {
                 for(let j = 0; j < result2.length; j++) {
                     let alt = ""
@@ -126,13 +158,13 @@ function getpageVIDEOS(content:string) {
                     try { title = result2[j].split('title="')[1].split('"')[0] } catch (error) {}
                     url.push({
                         url: result2[j].split('"')[1],
-                        alt: alt,
-                        title: title
+                        alt: cleanString(alt),
+                        title: cleanString(title)
                     });
                 }
             } else {
-                let regex = new RegExp("src=\'(.*?)\'");
-                let result2 = regex.exec(result[i]);
+                let regex = /src=\'(.*?)\'/g;
+                let result2 = result[i].match(regex);
                 if(result2) {
                     for(let j = 0; j < result2.length; j++) {
 
@@ -143,8 +175,8 @@ function getpageVIDEOS(content:string) {
 
                         url.push({
                             url: result2[j].split("'")[1],
-                            alt: alt,
-                            title: title
+                            alt: cleanString(alt),
+                            title: cleanString(title)
                         });
                     }
                 }
@@ -156,71 +188,117 @@ function getpageVIDEOS(content:string) {
 
 function getpageINTERNAL_LINKS(content, domain){
     // return all the internal links of the page: <a href="http(s)://domain.com/...">...</a>
-    let regex = new RegExp("<a(.*?)</a>");
-    let result = regex.exec(content);
+    let regex = /<a(.*?)<\/a>/g;
+    let result = content.match(regex);
+
     let url:string[] = []
     if(result) {
         for(let i = 0; i < result.length; i++) {
-            let regex = new RegExp("href=\"(.*?)\"");
-            let result2 = regex.exec(result[i]);
+            let regex = /href\=\"(.*?)\"/g;
+            let result2 = result[i].match(regex);
             if(result2) {
                 for(let j = 0; j < result2.length; j++) {
-                    if(result2[j].includes(domain) || result2[j].startsWith('/')) {
-                        try { url.push(result2[j].split('"')[1].split('"')[0]) } catch (error) {}
-                    }
+                    try { 
+                        if(result2[j].includes(domain) || result2[j].split('"')[1].split('"')[0].startsWith('/')) {
+                            try { url.push(result2[j].split('"')[1].split('"')[0]) } catch (error) {}
+                        }
+                    } catch (error) {}
                 }
             } else {
-                let regex = new RegExp("href=\'(.*?)\'");
-                let result2 = regex.exec(result[i]);
+                let regex = /href=\'(.*?)\'/g;
+                let result2 = result[i].match(regex);
                 if(result2) {
                     for(let j = 0; j < result2.length; j++) {
-                        if(result2[j].includes(domain) || result2[j].startsWith('/')) {
-                            try { url.push(result2[j].split("'")[1].split("'")[0]) } catch (error) {}
-                        }
+                        try {
+                            if(result2[j].includes(domain) || result2[j].split('"')[1].split('"')[0].startsWith('/')) {
+                                try { url.push(result2[j].split("'")[1].split("'")[0]) } catch (error) {}
+                            }
+                        } catch (error) {}
                     }
                 }
             }
         }
     }
-    return url;
+
+    // remove duplicates
+    url = url.filter((v, i, a) => a.indexOf(v) === i);
+
+    // add the domain to the url if it's not there
+    for(let i = 0; i < url.length; i++) {
+        if(url[i].startsWith('//') || url[i].startsWith('#')) {
+            // remove the url from the array
+            url.splice(i, 1);
+            i--
+        } else if(!url[i].startsWith('http')) {
+            url[i] = "http://"+domain + url[i];
+        } 
+    }
+
+    // remove spaces
+    for(let i = 0; i < url.length; i++) {
+        if(url[i].includes(' ')) {
+            url[i] = url[i].split(' ')[0];
+        }
+    }
+
+
+    return url
 }
 
 function getpageEXTERNAL_LINKS(content, domain){
     // return all the external links of the page: <a href="http(s)://domain.com/...">...</a>
-    let regex = new RegExp("<a(.*?)</a>");
-    let result = regex.exec(content);
+    let regex = /\<a(.*?)\<\/a\>/g;
+    let result = content.match(regex);
     let url:string[] = []
     if(result) {
         for(let i = 0; i < result.length; i++) {
-            let regex = new RegExp("href=\"(.*?)\"");
-            let result2 = regex.exec(result[i]);
+            let regex = /href=\"(.*?)\"/g;
+            let result2 = result[i].match(regex);
             if(result2) {
                 for(let j = 0; j < result2.length; j++) {
-                    if(!result2[j].includes(domain)) {
-                        try { url.push(result2[j].split('"')[1].split('"')[0]); } catch (error) {}
-                    }
+                    try {
+                        if(!result2[j].includes(domain) && !result2[j].split('"')[1].split('"')[0].startsWith('/')) {
+                            try { url.push(result2[j].split('"')[1].split('"')[0]); } catch (error) {}
+                        }
+                    } catch (error) {}                    
                 }
             } else {
-                let regex = new RegExp("href=\'(.*?)\'");
-                let result2 = regex.exec(result[i]);
+                let regex = /href\=\'(.*?)\'/g;
+                let result2 = result[i].match(regex);
                 if(result2) {
                     for(let j = 0; j < result2.length; j++) {
-                        if(!result2[j].includes(domain)) {
-                            try { url.push(result2[j].split("'")[1].split("'")[0]); } catch (error) {}
-                        }
+                        try {
+                            if(!result2[j].includes(domain) && !result2[j].split('"')[1].split('"')[0].startsWith('/')) {
+                                try { url.push(result2[j].split("'")[1].split("'")[0]); } catch (error) {}
+                            }
+                        } catch (error) {}
                     }
                 }
             }
         }
     }
+
+    // remove duplicates
+    url = url.filter((v, i, a) => a.indexOf(v) === i);
+
+    // remove all domains that not contains .onion
+    url = url.filter((v, i, a) => v.includes('.onion'));
+
+    // remove spaces
+    for(let i = 0; i < url.length; i++) {
+        if(url[i].includes(' ')) {
+            url[i] = url[i].split(' ')[0];
+        }
+    }
+
     return url;
 }
 
 function getpageEXTRACTED_TEXT(content) {
     let text:string[] = []
     // Get the paragraphs content
-    let regex = new RegExp("<p(.*?)>(.*?)</p>");
-    let result = regex.exec(content);
+    let regex = /<p(.*?)>(.*?)<\/p>/g;
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             try { text.push(result[i].split('>')[1].split('<')[0]); } catch (error) {}
@@ -228,8 +306,8 @@ function getpageEXTRACTED_TEXT(content) {
     }
 
     // Get the h1,h2,h...h6 content
-    regex = new RegExp("<h(.*?)>(.*?)</h(.*?)>");
-    result = regex.exec(content);
+    regex = /<h(.*?)>(.*?)<\/h(.*?)>/g;
+    result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             try { text.push(result[i].split('>')[1].split('<')[0]); } catch (error) {}
@@ -237,8 +315,8 @@ function getpageEXTRACTED_TEXT(content) {
     }
 
     // Get the span content
-    regex = new RegExp("<span(.*?)>(.*?)</span>");
-    result = regex.exec(content);
+    regex = /<span(.*?)>(.*?)<\/span>/g;
+    result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             try {   
@@ -251,8 +329,8 @@ function getpageEXTRACTED_TEXT(content) {
     }
 
     // get the links content
-    regex = new RegExp("<a(.*?)>(.*?)</a>");
-    result = regex.exec(content);
+    regex = /<a(.*?)>(.*?)<\/a>/g;
+    result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             try {   
@@ -264,6 +342,10 @@ function getpageEXTRACTED_TEXT(content) {
         }
     }
 
+    // remove all empty strings
+    text = text.filter((a) => a !== '');
+
+    text = cleanArray(text);
     
     return text;
 }
@@ -272,8 +354,8 @@ function getpageEXTRACTED_TEXT(content) {
 
 function analyseISLOGINPAGE(content) {
     // Try to find if this page contains a login form
-    let regex = new RegExp("<form(.*?)</form>");
-    let result = regex.exec(content);
+    let regex = /<form(.*?)<\/form>/g;
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             if(result[i].includes('pass')) {
@@ -283,8 +365,8 @@ function analyseISLOGINPAGE(content) {
     }
 
     // else try to find if this page contains inputs with the name "pass" and ("login" or "user" or "email")
-    regex = new RegExp("<input(.*?)>");
-    result = regex.exec(content);
+    regex = /<input(.*?)>/g;
+    result = content.match(regex);
     let pass = false;
     let user_and_email = false;
     if(result) {
@@ -306,11 +388,14 @@ function analyseISLOGINPAGE(content) {
 
 function analyseISERRORPAGE(content){
     //Try to find if this page contains a 40* or 50* error
-    let regex = new RegExp("<h(.*?)>(.*?)</h(.*?)>");
-    let result = regex.exec(content);
+    let regex = /<h(.*?)>(.*?)<\/h(.*?)>/g
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
-            if(result[i].includes('40') || result[i].includes('50')) {
+            if(result[i].includes('error') || result[i].includes('400') || result[i].includes('401') 
+            || result[i].includes('403') || result[i].includes('404') || result[i].includes('500') 
+            || result[i].includes('501') || result[i].includes('502') || result[i].includes('503') 
+            || result[i].includes('504') || result[i].includes('505')) {
                 return true;
             }
         }
@@ -320,8 +405,8 @@ function analyseISERRORPAGE(content){
 
 function analyseCONTAINSCONTACTFORM(content){
     // Try to find if this page contains a contact form
-    let regex = new RegExp("<form(.*?)</form>");
-    let result = regex.exec(content);
+    let regex = /<form(.*?)<\/form>/g;
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             if(result[i].includes('email') || result[i].includes('mail') || result[i].includes('contact') || result[i].includes('message')) {
@@ -335,8 +420,8 @@ function analyseCONTAINSCONTACTFORM(content){
 
 function analyseCONTAINSSEARCHFORM(content){
     // Try to find if this page contains a search form with a search input
-    let regex = new RegExp("<input(.*?)>");
-    let result = regex.exec(content);
+    let regex = /<input(.*?)>/g;
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             if(result[i].includes('search') || result[i].includes('query') || result[i].includes('q') || result[i].includes('s') || result[i].includes('find')) {
@@ -348,8 +433,8 @@ function analyseCONTAINSSEARCHFORM(content){
 
 function analyseCONTAINSFREECONTENT(content){
     // Try to find if this page contains a free content
-    let regex = new RegExp("<p(.*?)>(.*?)</p>");
-    let result = regex.exec(content);
+    let regex = /<p(.*?)>(.*?)<\/p>/g;
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             if(result[i].includes('free') || result[i].includes('gratis') || result[i].includes('gratuit') || result[i].includes('gratuite') || result[i].includes('$0')) {
@@ -362,8 +447,8 @@ function analyseCONTAINSFREECONTENT(content){
 
 function analyseCONTAINSPREMIUMCONTENT(content){
     // Try to find if this page contains a premium content
-    let regex = new RegExp("<p(.*?)>(.*?)</p>");
-    let result = regex.exec(content);
+    let regex = /<p(.*?)>(.*?)<\/p>/g;
+    let result = content.match(regex);
     if(result) {
         for(let i = 0; i < result.length; i++) {
             if(result[i].includes('premium') || result[i].includes('payant') || result[i].includes('vip') || result[i].includes('$')) {
@@ -388,3 +473,32 @@ function analyseCONTAINSADULTCONTENT(text){
 
 
 
+//////// UTILS FUNCTIONS ////////
+function cleanArray(array:string[]){
+    // Remove all empty strings
+    array = array.filter((a) => a !== '');
+
+    // Remove all space at the beginning and at the end of each string
+    for(let i = 0; i < array.length; i++) {
+        while(array[i].startsWith(' ')) {
+            array[i] = array[i].substring(1);
+        }
+        while(array[i].endsWith(' ')) {
+            array[i] = array[i].substring(0, array[i].length - 1);
+        }
+    }
+
+
+    return array;
+}
+
+function cleanString(str:string){
+    // Remove all space at the beginning and at the end of each string
+    while(str.startsWith(' ')) {
+        str = str.substring(1);
+    }
+    while(str.endsWith(' ')) {
+        str = str.substring(0, str.length - 1);
+    }
+    return str;
+}

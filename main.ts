@@ -40,38 +40,44 @@ async function main() {
         pendindUrls.splice(0, 1);
         //Step 3 get the content of the url
         let content = await tor.get(url);
+
         // Step 4 analyse the content
         let n = await analyse(data, url, content);
 
-        console.log(n)
+        //console.log(n)
 
         let data2 = n.data;
         let internal_link = n.internal_links;
         let external_links = n.external_links;
 
-        console.log(internal_link)
 
         // get the new urls
-        
-        for(let i = 0; i < internal_link.length; i++) {
-            if(!pendindUrls.includes(internal_link[i]) && internal_link[i] != undefined && internal_link[i] != null) {
-                pendindUrls.push(internal_link[i]);
+        if(internal_link!=undefined && internal_link!=null && data2!=undefined && data2!=null){
+            for(let i = 0; i < internal_link.length; i++) {
+                if(!pendindUrls.includes(internal_link[i]) && internal_link[i] != undefined && internal_link[i] != null && !data2.allurl.includes(internal_link[i])) {
+                    pendindUrls.push(internal_link[i]);
+                }
             }
         }
-
-        for(let i = 0; i < external_links.length; i++) {
-            db.addWaitingUrl(domain, external_links[i]);
+       
+        if(external_links!=undefined && external_links!=null){
+            for(let i = 0; i < external_links.length; i++) {
+                db.addWaitingUrl(domain, external_links[i]);
+            }
         }
-
-        // launch a comparison between the old data and the new data of the url
-        if(olddata.domain != undefined && olddata.domain != null) {
-            await compare(olddata, data2);
+    
+        if(data2 != undefined && data2 != null){
+            // Save the data2 in the data
+            data = data2;
+            await db.addWebsiteData(domain, data2);
         }
-
-        // Save the data2 in the data
-        data = data2;
-        await db.addWebsiteData(domain, data);
     }
+
+    // launch a comparison between the old data and the new data of the url
+    if(olddata.domain != undefined && olddata.domain != null) {
+        await compare(olddata, data);
+    }
+
     db.deletefromcachedDatabase(url)
     console.log(`[SCRAWLER] Finished crawling ${domain}...`)
 }
